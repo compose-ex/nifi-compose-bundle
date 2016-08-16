@@ -19,7 +19,7 @@
     <parent>
         <groupId>com.compose.nifi</groupId>
         <artifactId>nifi-compose-bundle</artifactId>
-        <version>0.7.0</version>
+        <version>1.0.0-BETA</version>
     </parent>
 
     <artifactId>nifi-compose-processors</artifactId>
@@ -38,14 +38,14 @@
         <dependency>
             <groupId>org.apache.nifi</groupId>
             <artifactId>nifi-standard-services-api-nar</artifactId>
-            <version>0.7.0</version>
+            <version>1.0.0-BETA</version>
             <type>nar</type>
         </dependency>
 
         <dependency>
             <groupId>org.apache.nifi</groupId>
             <artifactId>nifi-ssl-context-service-api</artifactId>
-            <version>0.7.0</version>
+            <version>1.0.0-BETA</version>
             <scope>provided</scope>
         </dependency>
 

@@ -19,11 +19,11 @@
     <parent>
         <groupId>com.compose.nifi</groupId>
         <artifactId>nifi-compose-bundle</artifactId>
-        <version>0.7.0</version>
+        <version>1.0.0-BETA</version>
     </parent>
 
     <artifactId>nifi-compose-nar</artifactId>
-    <version>0.7.0</version>
+    <version>1.0.0-BETA</version>
     <packaging>nar</packaging>
     <properties>
         <maven.javadoc.skip>true</maven.javadoc.skip>
@@ -34,7 +34,7 @@
         <dependency>
             <groupId>com.compose.nifi</groupId>
             <artifactId>nifi-compose-processors</artifactId>
-            <version>0.7.0</version>
+            <version>1.0.0-BETA</version>
         </dependency>
     </dependencies>
 

@@ -19,12 +19,12 @@
     <parent>
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi-nar-bundles</artifactId>
-        <version>0.7.0</version>
+        <version>1.0.0-BETA</version>
     </parent>
 
     <groupId>com.compose.nifi</groupId>
     <artifactId>nifi-compose-bundle</artifactId>
-    <version>0.7.0</version>
+    <version>1.0.0-BETA</version>
     <packaging>pom</packaging>
 
     <modules>
