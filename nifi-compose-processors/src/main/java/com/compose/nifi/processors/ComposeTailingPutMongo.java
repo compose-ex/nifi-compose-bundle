@@ -6,6 +6,7 @@ import org.apache.nifi.annotation.behavior.EventDriven;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.TriggerSerially;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
+import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnStopped;
 import org.apache.nifi.components.PropertyDescriptor;
@@ -30,6 +31,7 @@ import static com.mongodb.client.model.Filters.eq;
  */
 @EventDriven
 @TriggerSerially
+@Tags({"compose", "mongodb", "put"})
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
 @CapabilityDescription("Puts Documents and Operations into a MongoDB. Relies on attributes to decide on type of operation such as insert, update, or delete.")
 public class ComposeTailingPutMongo extends AbstractProcessor {
@@ -113,7 +115,6 @@ public class ComposeTailingPutMongo extends AbstractProcessor {
             break;
           case "u":
             doc.remove("_id");
-            getLogger().error(doc.toJson());
             collection.updateOne(eq("_id", new ObjectId(id)), new Document("$set", doc));
             break;
           case "n":

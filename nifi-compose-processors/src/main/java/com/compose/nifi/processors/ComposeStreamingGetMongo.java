@@ -32,8 +32,12 @@ import java.util.regex.Pattern;
 @InputRequirement(InputRequirement.Requirement.INPUT_FORBIDDEN)
 @Tags({"compose", "mongodb", "streaming query"})
 @WritesAttributes({
-    @WritesAttribute(attribute="logical.key", description = "The MongoDB object_id for the document in hex format."),
-    @WritesAttribute(attribute="mime.type", description = "This is the content type for the content. Always equal to application/json.")})
+    @WritesAttribute(attribute="mime.type", description = "This is the content type for the content. Always equal to application/json."),
+    @WritesAttribute(attribute="mongo.id", description = "The MongoDB object_id for the document in hex format."),
+    @WritesAttribute(attribute="mongo.op", description = "The MongoDB operation to match other Processors. `q` for query is used. It is made up"),
+    @WritesAttribute(attribute="mongo.db", description = "The MongoDB db."),
+    @WritesAttribute(attribute="mongo.collection", description = "The MongoDB collection")
+})
 @CapabilityDescription("Streams documents from collection(s) instead of waiting for query to finish before next step.")
 public class ComposeStreamingGetMongo extends AbstractSessionFactoryProcessor {
 
@@ -122,18 +126,18 @@ public class ComposeStreamingGetMongo extends AbstractSessionFactoryProcessor {
             final MongoCursor<Document> cursor = it.iterator();
             final String dbName = mongoWrapper.getDatabase(context).getName();
 
-            FlowFile flowFile = null;
             try {
                 while (cursor.hasNext()) {
                     ProcessSession session = sessionFactory.createSession();
 
-                    flowFile = session.create();
+                    FlowFile flowFile = session.create();
 
                     final Document currentDoc = cursor.next();
                     ObjectId currentObjectId = currentDoc.getObjectId("_id");
 
                     flowFile = session.putAttribute(flowFile, "mime.type", "application/json");
                     flowFile = session.putAttribute(flowFile, "mongo.id", currentObjectId.toHexString());
+                    flowFile = session.putAttribute(flowFile, "mongo.op", "q");
                     flowFile = session.putAttribute(flowFile, "mongo.db", dbName);
                     flowFile = session.putAttribute(flowFile, "mongo.collection", collectionName);
 

@@ -61,15 +61,6 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
     static final Relationship REL_FAILURE = new Relationship.Builder().name("failure")
             .description("All FlowFiles that cannot be written to MongoDB are routed to this relationship").build();
 
-    static final String WRITE_CONCERN_ACKNOWLEDGED = "ACKNOWLEDGED";
-    static final String WRITE_CONCERN_UNACKNOWLEDGED = "UNACKNOWLEDGED";
-    static final String WRITE_CONCERN_JOURNALED = "JOURNALED";
-    static final String WRITE_CONCERN_MAJORITY = "MAJORITY";
-    static final String W1 = "W1";
-    static final String W2 = "W2";
-    static final String W3 = "W3";
-
-
     private static final PropertyDescriptor COLLECTION_NAME = new PropertyDescriptor.Builder()
             .name("MongoWrapper Collection Regex")
             .description("The regex to match collections. Uses java.util regexes. The default of '.*' matches all collections")
@@ -77,15 +68,6 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
             .defaultValue(".*")
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
-    private static final PropertyDescriptor WRITE_CONCERN = new PropertyDescriptor.Builder()
-        .name("Write Concern")
-        .description("The write concern to use")
-        .required(true)
-        .allowableValues(WRITE_CONCERN_ACKNOWLEDGED, WRITE_CONCERN_UNACKNOWLEDGED,
-                WRITE_CONCERN_JOURNALED, WRITE_CONCERN_MAJORITY,
-                W1, W2, W3)
-        .defaultValue(WRITE_CONCERN_ACKNOWLEDGED)
-        .build();
     private static final PropertyDescriptor CHARACTER_SET = new PropertyDescriptor.Builder()
         .name("Character Set")
         .description("The Character Set in which the data is encoded")
@@ -101,8 +83,8 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
         List<PropertyDescriptor> _propertyDescriptors = new ArrayList<>();
         _propertyDescriptors.addAll(MongoWrapper.descriptors);
         _propertyDescriptors.add(COLLECTION_NAME);
-        _propertyDescriptors.add(WRITE_CONCERN);
         _propertyDescriptors.add(CHARACTER_SET);
+        _propertyDescriptors.add(MongoWrapper.WRITE_CONCERN);
         propertyDescriptors = Collections.unmodifiableList(_propertyDescriptors);
 
         final Set<Relationship> _relationships = new HashSet<>();
@@ -138,7 +120,7 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
 
         final Charset charset = Charset.forName(context.getProperty(CHARACTER_SET).getValue());
         final String collectionName = context.getProperty(COLLECTION_NAME).getValue();
-        final WriteConcern writeConcern = getWriteConcern(context);
+        final WriteConcern writeConcern = mongoWrapper.getWriteConcern(context);
 
         final MongoCollection<Document> collection = mongoWrapper.getDatabase(context).getCollection(collectionName).withWriteConcern(writeConcern);
 
@@ -178,34 +160,4 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
         mongoWrapper.closeClient();
     }
 
-    protected WriteConcern getWriteConcern(final ProcessContext context) {
-        final String writeConcernProperty = context.getProperty(WRITE_CONCERN).getValue();
-        WriteConcern writeConcern = null;
-        switch (writeConcernProperty) {
-        case WRITE_CONCERN_ACKNOWLEDGED:
-            writeConcern = WriteConcern.ACKNOWLEDGED;
-            break;
-        case WRITE_CONCERN_UNACKNOWLEDGED:
-            writeConcern = WriteConcern.UNACKNOWLEDGED;
-            break;
-        case WRITE_CONCERN_JOURNALED:
-            writeConcern = WriteConcern.JOURNALED;
-            break;
-        case WRITE_CONCERN_MAJORITY:
-            writeConcern = WriteConcern.MAJORITY;
-            break;
-        case W1:
-            writeConcern = WriteConcern.W1;
-            break;
-        case W2:
-            writeConcern = WriteConcern.W2;
-            break;
-        case W3:
-            writeConcern = WriteConcern.W3;
-            break;
-        default:
-            writeConcern = WriteConcern.ACKNOWLEDGED;
-        }
-        return writeConcern;
-    }
 }

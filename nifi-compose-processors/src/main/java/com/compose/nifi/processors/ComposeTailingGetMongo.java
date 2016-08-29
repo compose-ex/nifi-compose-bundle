@@ -12,6 +12,7 @@ import org.apache.nifi.annotation.behavior.TriggerSerially;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
+import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnStopped;
 import org.apache.nifi.components.PropertyDescriptor;
@@ -34,6 +35,7 @@ import static com.mongodb.client.model.Filters.*;
  */
 @TriggerSerially
 @InputRequirement(InputRequirement.Requirement.INPUT_FORBIDDEN)
+@Tags({"compose", "mongodb", "get", "tailing"})
 @WritesAttributes({
           @WritesAttribute(attribute = "mime.type", description = "This is the content-type for the content."),
           @WritesAttribute(attribute = "mongo.id", description = "The MongoDB object_id for the document in hex format or the 'h' from the oplog document."),
@@ -99,11 +101,10 @@ public class ComposeTailingGetMongo extends AbstractSessionFactoryProcessor {
         FindIterable<Document> it = collection.find();
         MongoCursor<Document> cursor = it.iterator();
 
-        FlowFile flowFile = null;
         try {
           while(cursor.hasNext()) {
             ProcessSession session = sessionFactory.createSession();
-            flowFile = session.create();
+            FlowFile flowFile = session.create();
             Document currentDoc = cursor.next();
             //TODO when not object_id
             ObjectId currentObjectId = currentDoc.getObjectId("_id");
@@ -137,14 +138,13 @@ public class ComposeTailingGetMongo extends AbstractSessionFactoryProcessor {
     try {
       FindIterable<Document> it = oplog.find(gt("ts", bts)).cursorType(CursorType.TailableAwait).oplogReplay(true).noCursorTimeout(true);
       MongoCursor<Document> cursor = it.iterator();
-      FlowFile flowFile = null;
       try {
         while(cursor.hasNext()){
           ProcessSession session = sessionFactory.createSession();
           Document currentDoc = cursor.next();
           String[] namespace = currentDoc.getString("ns").split(Pattern.quote("."));
           if(dbName.equals(namespace[0])) {
-            flowFile = session.create();
+            FlowFile flowFile = session.create();
             Document oDoc = currentDoc.get("o", Document.class);
             String h = Long.toString(currentDoc.getLong("h"));
             flowFile = session.putAttribute(flowFile, "mime.type", "application/json");
