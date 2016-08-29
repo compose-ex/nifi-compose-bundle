@@ -25,11 +25,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientOptions;
-import com.mongodb.MongoClientURI;
-import com.mongodb.client.MongoDatabase;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.annotation.behavior.EventDriven;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.InputRequirement.Requirement;
@@ -37,7 +32,6 @@ import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnStopped;
-import org.apache.nifi.authorization.exception.AuthorizerCreationException;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.processor.AbstractProcessor;
@@ -47,8 +41,6 @@ import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.io.InputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
-import org.apache.nifi.security.util.SslContextFactory;
-import org.apache.nifi.ssl.SSLContextService;
 import org.apache.nifi.stream.io.StreamUtils;
 import org.bson.Document;
 
@@ -58,8 +50,6 @@ import com.google.gson.JsonParser;
 
 import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoCollection;
-
-import javax.net.ssl.SSLContext;
 
 @EventDriven
 @Tags({ "mongodb", "batch insert", "batch update", "write", "put" })
@@ -71,64 +61,32 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
     static final Relationship REL_FAILURE = new Relationship.Builder().name("failure")
             .description("All FlowFiles that cannot be written to MongoDB are routed to this relationship").build();
 
-    static final String MODE_INSERT = "insert";
-    static final String MODE_UPDATE = "update";
-
     static final String WRITE_CONCERN_ACKNOWLEDGED = "ACKNOWLEDGED";
     static final String WRITE_CONCERN_UNACKNOWLEDGED = "UNACKNOWLEDGED";
-    static final String WRITE_CONCERN_FSYNCED = "FSYNCED";
     static final String WRITE_CONCERN_JOURNALED = "JOURNALED";
-    static final String WRITE_CONCERN_REPLICA_ACKNOWLEDGED = "REPLICA_ACKNOWLEDGED";
     static final String WRITE_CONCERN_MAJORITY = "MAJORITY";
+    static final String W1 = "W1";
+    static final String W2 = "W2";
+    static final String W3 = "W3";
 
 
-    private static final PropertyDescriptor URI = new PropertyDescriptor.Builder()
-            .name("Mongo URI")
-            .description("MongoURI, typically of the form: mongodb://host1[:port1][,host2[:port2],...]")
-            .required(true)
-            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-            .build();
-    private static final PropertyDescriptor DATABASE_NAME = new PropertyDescriptor.Builder()
-            .name("Mongo Database Name")
-            .description("The name of the database to use")
-            .required(true)
-            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-            .build();
     private static final PropertyDescriptor COLLECTION_NAME = new PropertyDescriptor.Builder()
-            .name("Mongo Collection Regex")
+            .name("MongoWrapper Collection Regex")
             .description("The regex to match collections. Uses java.util regexes. The default of '.*' matches all collections")
             .required(true)
             .defaultValue(".*")
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
-    private static final PropertyDescriptor SSL_CONTEXT_SERVICE = new PropertyDescriptor.Builder()
-            .name("ssl-context-service")
-            .displayName("SSL Context Service")
-            .description("The SSL Context Service used to provide client certificate information for TLS/SSL "
-                    + "connections.")
-            .required(false)
-            .identifiesControllerService(SSLContextService.class)
-            .build();
-    private static final PropertyDescriptor CLIENT_AUTH = new PropertyDescriptor.Builder()
-            .name("ssl-client-auth")
-            .displayName("Client Auth")
-            .description("Client authentication policy when connecting to secure (TLS/SSL) cluster. "
-                    + "Possible values are REQUIRED, WANT, NONE. This property is only used when an SSL Context "
-                    + "has been defined and enabled.")
-            .required(false)
-            .allowableValues(SSLContextService.ClientAuth.values())
-            .defaultValue("REQUIRED")
-            .build();
-
-    static final PropertyDescriptor WRITE_CONCERN = new PropertyDescriptor.Builder()
+    private static final PropertyDescriptor WRITE_CONCERN = new PropertyDescriptor.Builder()
         .name("Write Concern")
         .description("The write concern to use")
         .required(true)
-        .allowableValues(WRITE_CONCERN_ACKNOWLEDGED, WRITE_CONCERN_UNACKNOWLEDGED, WRITE_CONCERN_FSYNCED, WRITE_CONCERN_JOURNALED,
-            WRITE_CONCERN_REPLICA_ACKNOWLEDGED, WRITE_CONCERN_MAJORITY)
+        .allowableValues(WRITE_CONCERN_ACKNOWLEDGED, WRITE_CONCERN_UNACKNOWLEDGED,
+                WRITE_CONCERN_JOURNALED, WRITE_CONCERN_MAJORITY,
+                W1, W2, W3)
         .defaultValue(WRITE_CONCERN_ACKNOWLEDGED)
         .build();
-    static final PropertyDescriptor CHARACTER_SET = new PropertyDescriptor.Builder()
+    private static final PropertyDescriptor CHARACTER_SET = new PropertyDescriptor.Builder()
         .name("Character Set")
         .description("The Character Set in which the data is encoded")
         .required(true)
@@ -136,17 +94,13 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
         .defaultValue("UTF-8")
         .build();
 
-    private final static Set<Relationship> relationships;
-    private final static List<PropertyDescriptor> propertyDescriptors;
+    private static final Set<Relationship> relationships;
+    private static final List<PropertyDescriptor> propertyDescriptors;
 
     static {
         List<PropertyDescriptor> _propertyDescriptors = new ArrayList<>();
-        _propertyDescriptors.add(URI);
-        _propertyDescriptors.add(DATABASE_NAME);
+        _propertyDescriptors.addAll(MongoWrapper.descriptors);
         _propertyDescriptors.add(COLLECTION_NAME);
-        _propertyDescriptors.add(SSL_CONTEXT_SERVICE);
-        _propertyDescriptors.add(CLIENT_AUTH);
-
         _propertyDescriptors.add(WRITE_CONCERN);
         _propertyDescriptors.add(CHARACTER_SET);
         propertyDescriptors = Collections.unmodifiableList(_propertyDescriptors);
@@ -157,7 +111,7 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
         relationships = Collections.unmodifiableSet(_relationships);
     }
 
-    private MongoClient mongoClient;
+    private MongoWrapper mongoWrapper;
 
     @Override
     public Set<Relationship> getRelationships() {
@@ -171,45 +125,8 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
 
     @OnScheduled
     public final void createClient(ProcessContext context) throws IOException {
-        if (mongoClient != null) {
-            closeClient();
-        }
-
-        getLogger().info("Creating MongoClient");
-
-        // Set up the client for secure (SSL/TLS communications) if configured to do so
-        final SSLContextService sslService = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
-        final String rawClientAuth = context.getProperty(CLIENT_AUTH).getValue();
-        final SSLContext sslContext;
-
-        if (sslService != null) {
-            final SSLContextService.ClientAuth clientAuth;
-            if (StringUtils.isBlank(rawClientAuth)) {
-                clientAuth = SSLContextService.ClientAuth.REQUIRED;
-            } else {
-                try {
-                    clientAuth = SSLContextService.ClientAuth.valueOf(rawClientAuth);
-                } catch (final IllegalArgumentException iae) {
-                    throw new AuthorizerCreationException(String.format("Unrecognized client auth '%s'. Possible values are [%s]",
-                            rawClientAuth, StringUtils.join(SslContextFactory.ClientAuth.values(), ", ")));
-                }
-            }
-            sslContext = sslService.createSSLContext(clientAuth);
-        } else {
-            sslContext = null;
-        }
-
-        try {
-            final String uri = context.getProperty(URI).getValue();
-            if(sslContext == null) {
-                mongoClient = new MongoClient(new MongoClientURI(uri));
-            } else {
-                mongoClient = new MongoClient(new MongoClientURI(uri, getClientOptions(sslContext)));
-            }
-        } catch (Exception e) {
-            getLogger().error("Failed to schedule PutMongo due to {}", new Object[] { e }, e);
-            throw e;
-        }
+        mongoWrapper = new MongoWrapper();
+        mongoWrapper.createClient(context);
     }
 
     @Override
@@ -223,7 +140,7 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
         final String collectionName = context.getProperty(COLLECTION_NAME).getValue();
         final WriteConcern writeConcern = getWriteConcern(context);
 
-        final MongoCollection<Document> collection = getDatabase(context).getCollection(collectionName).withWriteConcern(writeConcern);
+        final MongoCollection<Document> collection = mongoWrapper.getDatabase(context).getCollection(collectionName).withWriteConcern(writeConcern);
 
         try {
             // Read the contents of the FlowFile into a byte array
@@ -247,7 +164,7 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
 
             collection.insertMany(docs);
 
-            session.getProvenanceReporter().send(flowFile, context.getProperty(URI).getValue());
+            session.getProvenanceReporter().send(flowFile, mongoWrapper.getURI(context));
             session.transfer(flowFile, REL_SUCCESS);
         } catch (Exception e) {
             getLogger().error("Failed to insert {} into MongoDB due to {}", new Object[] {flowFile, e}, e);
@@ -255,25 +172,10 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
             context.yield();
         }
     }
-    private MongoClientOptions.Builder getClientOptions(final SSLContext sslContext) {
-        MongoClientOptions.Builder builder = MongoClientOptions.builder();
-        builder.sslEnabled(true);
-        builder.socketFactory(sslContext.getSocketFactory());
-        return builder;
-    }
 
     @OnStopped
     public final void closeClient() {
-        if (mongoClient != null) {
-            getLogger().info("Closing MongoClient");
-            mongoClient.close();
-            mongoClient = null;
-        }
-    }
-
-    private MongoDatabase getDatabase(final ProcessContext context) {
-        final String databaseName = context.getProperty(DATABASE_NAME).getValue();
-        return mongoClient.getDatabase(databaseName);
+        mongoWrapper.closeClient();
     }
 
     protected WriteConcern getWriteConcern(final ProcessContext context) {
@@ -286,17 +188,20 @@ public class ComposeBatchPutMongo extends AbstractProcessor {
         case WRITE_CONCERN_UNACKNOWLEDGED:
             writeConcern = WriteConcern.UNACKNOWLEDGED;
             break;
-        case WRITE_CONCERN_FSYNCED:
-            writeConcern = WriteConcern.FSYNCED;
-            break;
         case WRITE_CONCERN_JOURNALED:
             writeConcern = WriteConcern.JOURNALED;
             break;
-        case WRITE_CONCERN_REPLICA_ACKNOWLEDGED:
-            writeConcern = WriteConcern.REPLICA_ACKNOWLEDGED;
-            break;
         case WRITE_CONCERN_MAJORITY:
             writeConcern = WriteConcern.MAJORITY;
+            break;
+        case W1:
+            writeConcern = WriteConcern.W1;
+            break;
+        case W2:
+            writeConcern = WriteConcern.W2;
+            break;
+        case W3:
+            writeConcern = WriteConcern.W3;
             break;
         default:
             writeConcern = WriteConcern.ACKNOWLEDGED;

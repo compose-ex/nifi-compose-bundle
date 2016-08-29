@@ -23,7 +23,6 @@ import java.util.*;
 @EventDriven
 @Tags({ "compose", "local", "RocksDB, unique, deduplicate" })
 @InputRequirement(Requirement.INPUT_REQUIRED)
-@ReadsAttribute(attribute = "logical.key", description = "The attribute name to check for duplicates.")
 @CapabilityDescription("Indexes keys in a local RocksDB for gating duplicates by routing to SEEN and UNSEEN. Doesn't store any values only indexes a configured attribute of a FlowFile. This attribute name should hold the logical key for an entity. ")
 public class ComposeUniqueRocksDB extends AbstractProcessor {
   private static final PropertyDescriptor DIRECTORY = new PropertyDescriptor.Builder()
@@ -38,7 +37,6 @@ public class ComposeUniqueRocksDB extends AbstractProcessor {
               .name("Logical Key")
               .description("The attribute name to be checked for duplicates")
               .required(true)
-              .defaultValue("logical.key")
               .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
               .expressionLanguageSupported(true)
               .build();
@@ -113,12 +111,14 @@ public class ComposeUniqueRocksDB extends AbstractProcessor {
   public void onTrigger(final ProcessContext context, final ProcessSession session) {
     final FlowFile flowFile = session.get();
     if(flowFile == null) {
+      session.transfer(flowFile, REL_FAILURE);
       return;
     }
 
     String logical_key = flowFile.getAttribute(logicalKeyName);
     if(logical_key == null) {
       session.transfer(flowFile, REL_FAILURE);
+      return;
     }
 
     StringBuffer buffer = new StringBuffer();
@@ -148,7 +148,9 @@ public class ComposeUniqueRocksDB extends AbstractProcessor {
     }
   }
 
-  private void transferToRelationship(ProcessSession session, FlowFile flowFile, Relationship relationship) {
+  private void transferToRelationship(ProcessSession session,
+                                      FlowFile flowFile,
+                                      Relationship relationship) {
     session.getProvenanceReporter().route(flowFile, relationship);
     session.transfer(flowFile, relationship);
   }
