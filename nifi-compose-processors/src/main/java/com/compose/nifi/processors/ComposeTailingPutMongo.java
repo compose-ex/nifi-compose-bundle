@@ -114,8 +114,12 @@ public class ComposeTailingPutMongo extends AbstractProcessor {
             collection.deleteOne(eq("_id", new ObjectId(id)));
             break;
           case "u":
-            doc.remove("_id");
-            collection.updateOne(eq("_id", new ObjectId(id)), new Document("$set", doc));
+            if (doc.containsKey("$set") || doc.containsKey("$unset")) {
+              collection.updateOne(eq("_id", new ObjectId(id)), doc);
+            } else {
+              doc.remove("_id");
+              collection.updateOne(eq("_id", new ObjectId(id)), new Document("$set", doc));
+            }
             break;
           case "n":
             break;
