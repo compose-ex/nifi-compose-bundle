@@ -177,8 +177,9 @@ public class ComposeTailingGetMongo extends AbstractSessionFactoryProcessor {
     switch(doc.getString("op")) {
       case "i":
       case "d":
-      case "u":
         return doc.get("o", Document.class).getObjectId("_id").toHexString();
+      case "u":
+	      return doc.get("o2", Document.class).getObjectId("_id").toHexString();
       case "n":
       case "c":
         return Long.toString(doc.getLong("h"));
